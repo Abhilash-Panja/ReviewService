@@ -1,5 +1,9 @@
 package org.example.uberreviewservice.service;
 
+import com.rideflow.rideflowentityservice.models.Booking;
+import com.rideflow.rideflowentityservice.models.BookingStatus;
+import com.rideflow.rideflowentityservice.models.Driver;
+import com.rideflow.rideflowentityservice.models.Passenger;
 import lombok.RequiredArgsConstructor;
 import org.example.uberreviewservice.dto.booking.BookingRequestDTO;
 import org.example.uberreviewservice.dto.booking.BookingResponseDTO;
@@ -11,10 +15,6 @@ import org.example.uberreviewservice.exception.NoDriversAvailableException;
 import org.example.uberreviewservice.exception.PassengerNotFoundException;
 import org.example.uberreviewservice.mapper.BookingMapper;
 import org.example.uberreviewservice.mapper.ReviewMapper;
-import org.example.uberreviewservice.model.Booking;
-import org.example.uberreviewservice.model.BookingStatus;
-import org.example.uberreviewservice.model.Driver;
-import org.example.uberreviewservice.model.Passenger;
 import org.example.uberreviewservice.repository.BookingRepository;
 import org.example.uberreviewservice.repository.DriverRepository;
 import org.example.uberreviewservice.repository.PassengerRepository;

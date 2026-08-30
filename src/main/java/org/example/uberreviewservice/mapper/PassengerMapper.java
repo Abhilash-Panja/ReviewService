@@ -1,7 +1,8 @@
 package org.example.uberreviewservice.mapper;
 
+import com.rideflow.rideflowentityservice.models.Passenger;
 import org.example.uberreviewservice.dto.passenger.*;
-import org.example.uberreviewservice.model.Passenger;
+
 
 public class PassengerMapper {
 

@@ -1,8 +1,9 @@
 package org.example.uberreviewservice.mapper;
 
+import com.rideflow.rideflowentityservice.models.Booking;
 import org.example.uberreviewservice.dto.booking.BookingResponseDTO;
 import org.example.uberreviewservice.dto.review.ReviewSummaryDTO;
-import org.example.uberreviewservice.model.Booking;
+
 
 public class BookingMapper {
 

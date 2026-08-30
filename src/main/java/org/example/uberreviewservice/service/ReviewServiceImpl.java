@@ -1,5 +1,8 @@
 package org.example.uberreviewservice.service;
 
+import com.rideflow.rideflowentityservice.models.Booking;
+import com.rideflow.rideflowentityservice.models.BookingStatus;
+import com.rideflow.rideflowentityservice.models.PassengerReview;
 import lombok.RequiredArgsConstructor;
 import org.example.uberreviewservice.dto.review.PassengerReviewRequestDTO;
 import org.example.uberreviewservice.dto.review.PassengerReviewResponseDTO;
@@ -8,9 +11,6 @@ import org.example.uberreviewservice.exception.InvalidBookingStateForReviewExcep
 import org.example.uberreviewservice.exception.ReviewAlreadyExistsException;
 import org.example.uberreviewservice.exception.ReviewNotFoundException;
 import org.example.uberreviewservice.mapper.ReviewMapper;
-import org.example.uberreviewservice.model.Booking;
-import org.example.uberreviewservice.model.BookingStatus;
-import org.example.uberreviewservice.model.PassengerReview;
 import org.example.uberreviewservice.repository.BookingRepository;
 import org.example.uberreviewservice.repository.PassengerReviewRepository;
 import org.example.uberreviewservice.repository.ReviewRepository;

@@ -1,10 +1,11 @@
 package org.example.uberreviewservice.dto.booking;
 
+import com.rideflow.rideflowentityservice.models.BookingStatus;
 import lombok.*;
 import org.example.uberreviewservice.dto.driver.DriverSummaryDTO;
 import org.example.uberreviewservice.dto.passenger.PassengerSummaryDTO;
 import org.example.uberreviewservice.dto.review.ReviewSummaryDTO;
-import org.example.uberreviewservice.model.BookingStatus;
+
 
 import java.time.LocalTime;
 

@@ -1,8 +1,9 @@
 package org.example.uberreviewservice.dto.booking;
 
+import com.rideflow.rideflowentityservice.models.BookingStatus;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
-import org.example.uberreviewservice.model.BookingStatus;
+
 
 @Getter
 @Setter

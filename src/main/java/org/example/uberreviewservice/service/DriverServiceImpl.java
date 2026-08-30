@@ -1,5 +1,6 @@
 package org.example.uberreviewservice.service;
 
+import com.rideflow.rideflowentityservice.models.Driver;
 import lombok.AllArgsConstructor;
 import org.example.uberreviewservice.dto.driver.DriverRequestDTO;
 import org.example.uberreviewservice.dto.driver.DriverResponseDTO;
@@ -7,7 +8,6 @@ import org.example.uberreviewservice.exception.DriverHasActiveBookingsException;
 import org.example.uberreviewservice.exception.DriverNotFoundException;
 import org.example.uberreviewservice.exception.DuplicateLicenceNumberException;
 import org.example.uberreviewservice.mapper.DriverMapper;
-import org.example.uberreviewservice.model.Driver;
 import org.example.uberreviewservice.repository.BookingRepository;
 import org.example.uberreviewservice.repository.DriverRepository;
 import org.springframework.stereotype.Service;

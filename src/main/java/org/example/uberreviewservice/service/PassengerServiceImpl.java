@@ -1,11 +1,11 @@
 package org.example.uberreviewservice.service;
 
+import com.rideflow.rideflowentityservice.models.Passenger;
 import lombok.AllArgsConstructor;
 import org.example.uberreviewservice.dto.passenger.*;
 import org.example.uberreviewservice.exception.PassengerHasActiveBookingsException;
 import org.example.uberreviewservice.exception.PassengerNotFoundException;
 import org.example.uberreviewservice.mapper.PassengerMapper;
-import org.example.uberreviewservice.model.Passenger;
 import org.example.uberreviewservice.repository.BookingRepository;
 import org.example.uberreviewservice.repository.PassengerRepository;
 import org.springframework.stereotype.Service;

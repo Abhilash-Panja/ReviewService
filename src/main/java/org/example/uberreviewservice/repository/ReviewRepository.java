@@ -1,6 +1,7 @@
 package org.example.uberreviewservice.repository;
 
-import org.example.uberreviewservice.model.Review;
+
+import com.rideflow.rideflowentityservice.models.Review;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

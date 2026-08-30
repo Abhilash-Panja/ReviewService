@@ -1,7 +1,8 @@
 package org.example.uberreviewservice.mapper;
 
+import com.rideflow.rideflowentityservice.models.Driver;
 import org.example.uberreviewservice.dto.driver.*;
-import org.example.uberreviewservice.model.Driver;
+
 
 public class DriverMapper {
 
