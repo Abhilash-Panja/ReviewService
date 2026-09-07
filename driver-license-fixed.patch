@@ -29,7 +29,7 @@ index aa9bb7a..b5d1491 100644
  import org.springframework.data.jpa.repository.JpaRepository;
  
  public interface DriverRepository extends JpaRepository<Driver,Long> {
--    boolean existsByLicenceNumber(String licenceNumber);
+-    boolean existsByLicenseNumber(String licenceNumber);
 +    boolean existsByLicenseNumber(String licenseNumber);
  }
 diff --git a/src/main/java/org/example/uberreviewservice/service/DriverServiceImpl.java b/src/main/java/org/example/uberreviewservice/service/DriverServiceImpl.java
@@ -40,7 +40,7 @@ index 1479f51..26db63f 100644
      public DriverResponseDTO createDriver(DriverRequestDTO requestDTO) {
          validateDriverRequest(requestDTO);
  
--        if (driverRepository.existsByLicenceNumber(requestDTO.getLicenceNumber())) {
+-        if (driverRepository.existsByLicenseNumber(requestDTO.getLicenceNumber())) {
 +        if (driverRepository.existsByLicenseNumber(requestDTO.getLicenceNumber())) {
              throw new DuplicateLicenceNumberException(requestDTO.getLicenceNumber());
          }
@@ -50,7 +50,7 @@ index 1479f51..26db63f 100644
          // otherwise updating just the name would falsely trip the check against
          // the driver's own existing licence number
 -        if (!driver.getLicenceNumber().equals(requestDTO.getLicenceNumber())
--                && driverRepository.existsByLicenceNumber(requestDTO.getLicenceNumber())) {
+-                && driverRepository.existsByLicenseNumber(requestDTO.getLicenceNumber())) {
 +        if (!driver.getLicenseNumber().equals(requestDTO.getLicenceNumber())
 +                && driverRepository.existsByLicenseNumber(requestDTO.getLicenceNumber())) {
              throw new DuplicateLicenceNumberException(requestDTO.getLicenceNumber());
