@@ -1,0 +1,593 @@
+diff --git a/build.gradle b/build.gradle
+index 6c2d960d20d8ba9232f6d6b3b0431a1f85ac9c02..8b7c5e63dce2ae91847da9ab086d649a9255dd27 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -20,6 +20,7 @@
+ }
+ 
+ dependencies {
++    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
+     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+     compileOnly 'org.projectlombok:lombok'
+diff --git a/src/main/java/org/example/uberreviewservice/configuration/OpenApiConfig.java b/src/main/java/org/example/uberreviewservice/configuration/OpenApiConfig.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..d1515a295c0c7b87f6a614f2317c6bd06cafbccd
+--- /dev/null
++++ b/src/main/java/org/example/uberreviewservice/configuration/OpenApiConfig.java
+@@ -0,0 +1,14 @@
++package org.example.uberreviewservice.configuration;
++
++import io.swagger.v3.oas.annotations.OpenAPIDefinition;
++import io.swagger.v3.oas.annotations.info.Info;
++import org.springframework.context.annotation.Configuration;
++
++@Configuration
++@OpenAPIDefinition(info = @Info(
++        title = "RideFlow Review and CRUD API",
++        version = "0.0.1-SNAPSHOT",
++        description = "Passenger and driver CRUD, a local booking state machine and passenger reviews. This workflow uses direct JPA access, not distributed driver dispatch. Consumers pin a historical shared model; verify that artifact and schema before running."
++))
++public class OpenApiConfig {
++}
+diff --git a/src/main/java/org/example/uberreviewservice/controller/BookingController.java b/src/main/java/org/example/uberreviewservice/controller/BookingController.java
+index cbf4afa6332d11184ac16a90b4b8a9edf2136c80..9504bf4a895c931ac3e0cb3b5bcf7b3b8bc4eb6c 100644
+--- a/src/main/java/org/example/uberreviewservice/controller/BookingController.java
++++ b/src/main/java/org/example/uberreviewservice/controller/BookingController.java
+@@ -1,5 +1,15 @@
+ package org.example.uberreviewservice.controller;
+ 
++import io.swagger.v3.oas.annotations.Operation;
++import io.swagger.v3.oas.annotations.Parameter;
++import io.swagger.v3.oas.annotations.media.ArraySchema;
++import io.swagger.v3.oas.annotations.media.Content;
++import io.swagger.v3.oas.annotations.media.ExampleObject;
++import io.swagger.v3.oas.annotations.media.Schema;
++import io.swagger.v3.oas.annotations.responses.ApiResponse;
++import io.swagger.v3.oas.annotations.responses.ApiResponses;
++import io.swagger.v3.oas.annotations.tags.Tag;
++
+ import lombok.RequiredArgsConstructor;
+ import org.example.uberreviewservice.dto.booking.*;
+ import org.example.uberreviewservice.service.BookingService;
+@@ -9,6 +19,7 @@
+ import jakarta.validation.Valid;
+ import java.util.List;
+ 
++@Tag(name = "Review workflow - bookings")
+ @RestController
+ @RequestMapping("/api/v1/bookings")
+ @RequiredArgsConstructor
+@@ -16,6 +27,22 @@
+ 
+     private final BookingService bookingService;
+ 
++    @Operation(operationId = "ReviewService_createBooking", summary = "Create a review-workflow booking",
++            description = "Creates a booking with the state needed for the review lifecycle exercise. BookingController.createBooking -> BookingServiceImpl.createBooking -> PassengerRepository.findById -> findAvailableDriver (DriverRepository.findAll().stream().findFirst()) -> BookingRepository.save -> BookingMapper.toResponseDTO(saved, null). This service does not call Redis, Location-Service, Socket-Server or Kafka. It does not check driver availability or proximity. No @Valid on this create request.")
++    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
++            description = "JSON body is required by Spring MVC. Field descriptions distinguish service requirements from active validation.",
++            content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.booking.BookingRequestDTO.class),
++                    examples = @ExampleObject(value = "{\n  \"passengerId\": 101\n}")))
++    @ApiResponses({
++            @ApiResponse(responseCode = "201", description = "Create a review-workflow booking completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.booking.BookingResponseDTO.class), examples = @ExampleObject(value = "{\"id\":301,\"startTime\":null,\"endTime\":null,\"totalDistance\":0,\"bookingStatus\":\"ASSIGNED_DRIVER\",\"driver\":{\"id\":201,\"driverName\":\"Ravi K. Kumar\"},\"passenger\":{\"id\":101,\"passengerName\":\"Anita S. Sharma\"},\"review\":null}"))),
++            @ApiResponse(responseCode = "404", description = "PassengerNotFoundException for a non-null unknown passenger ID.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "503", description = "NoDriversAvailableException when driverRepository.findAll() is empty.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Missing passengerId, persistence/audit incompatibility, or other catch-all error.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @PostMapping
+     public ResponseEntity<BookingResponseDTO> createBooking(
+             @RequestBody BookingRequestDTO requestDTO) {
+@@ -23,19 +50,55 @@
+         return new ResponseEntity<>(response, HttpStatus.CREATED);
+     }
+ 
++    @Operation(operationId = "ReviewService_getBooking", summary = "Read a booking and its review summary",
++            description = "Reads persisted state after creation, status changes, and review creation. BookingController.getBooking -> BookingServiceImpl.getBooking -> BookingRepository.findById and ReviewRepository.findByBookingId -> ReviewMapper.toSummaryDTO if present -> BookingMapper.toResponseDTO. The embedded review summary may show rating=0.0 and description=null even though the dedicated passenger-review endpoint returns your 4.5/content. This is the current mapping behavior.")
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "Read a booking and its review summary completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.booking.BookingResponseDTO.class), examples = @ExampleObject(value = "{\"id\":301,\"startTime\":null,\"endTime\":null,\"totalDistance\":0,\"bookingStatus\":\"ASSIGNED_DRIVER\",\"driver\":{\"id\":201,\"driverName\":\"Ravi K. Kumar\"},\"passenger\":{\"id\":101,\"passengerName\":\"Anita S. Sharma\"},\"review\":null}"))),
++            @ApiResponse(responseCode = "404", description = "BookingNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Repository, mapping or catch-all failure.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @GetMapping("/{id}")
+-    public ResponseEntity<BookingResponseDTO> getBooking(@PathVariable Long id) {
++    public ResponseEntity<BookingResponseDTO> getBooking(@Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id) {
+         return ResponseEntity.ok(bookingService.getBooking(id));
+     }
+ 
++    @Operation(operationId = "ReviewService_getAllBookings", summary = "List bookings with review summaries",
++            description = "Checks the list projection and lets you compare multiple booking states. BookingController.getAllBookings -> BookingServiceImpl.getAllBookings -> BookingRepository.findAll and ReviewRepository.findAll; build a map keyed by booking ID, then BookingMapper.toResponseDTO for each booking. The explicit review fetch avoids one review lookup per booking, but lazy entity relationships can still cause extra SQL; do not interpret the code comment as a guarantee of only two database queries.")
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "List bookings with review summaries completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", array = @ArraySchema(schema = @Schema(implementation = org.example.uberreviewservice.dto.booking.BookingResponseDTO.class)), examples = @ExampleObject(value = "[{\"id\":301,\"startTime\":null,\"endTime\":null,\"totalDistance\":0,\"bookingStatus\":\"ASSIGNED_DRIVER\",\"driver\":{\"id\":201,\"driverName\":\"Ravi K. Kumar\"},\"passenger\":{\"id\":101,\"passengerName\":\"Anita S. Sharma\"},\"review\":null}]"))),
++            @ApiResponse(responseCode = "500", description = "Repository/mapping/catch-all error; duplicate review keys would also fail the toMap operation.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @GetMapping
+     public ResponseEntity<List<BookingResponseDTO>> getAllBookings() {
+         return ResponseEntity.ok(bookingService.getAllBookings());
+     }
+ 
++    @Operation(operationId = "ReviewService_updateStatus", summary = "Advance the review booking state",
++            description = "Moves the booking through the exact state machine required before a passenger review can be created. BookingController.updateStatus validates DTO -> BookingServiceImpl.updateStatus -> BookingRepository.findById -> ALLOWED_TRANSITIONS check -> update status; set startTime at STARTED and endTime at COMPLETED -> BookingRepository.save -> BookingMapper. COMPLETED also queries ReviewRepository. CANCELED is allowed from ASSIGNED_DRIVER, CAB_ARRIVED or STARTED only. COMPLETED/CANCELED are terminal; IN_RIDE permits only COMPLETED. SCHEDULED and ASSIGNING_DRIVER have no transitions in this service.")
++    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
++            description = "JSON body is required by Spring MVC. Field descriptions distinguish service requirements from active validation.",
++            content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.booking.BookingStatusUpdateDTO.class),
++                    examples = @ExampleObject(value = "{\n  \"newStatus\": \"CAB_ARRIVED\"\n}")))
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "Advance the review booking state completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.booking.BookingResponseDTO.class), examples = @ExampleObject(value = "{\"id\":301,\"startTime\":null,\"endTime\":null,\"totalDistance\":0,\"bookingStatus\":\"CAB_ARRIVED\",\"driver\":{\"id\":201,\"driverName\":\"Ravi K. Kumar\"},\"passenger\":{\"id\":101,\"passengerName\":\"Anita S. Sharma\"},\"review\":null}"))),
++            @ApiResponse(responseCode = "400", description = "@Valid / @NotNull violation: newStatus: newStatus is required.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "404", description = "BookingNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "409", description = "InvalidBookingStatusTransitionException, including same-state, skipped or backward transitions.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Unknown enum, malformed JSON, nonnumeric path, or another error reaching catch-all advice.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @PatchMapping("/{id}/status")
+     public ResponseEntity<BookingResponseDTO> updateStatus(
+-            @PathVariable Long id,
++            @Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id,
+             @Valid @RequestBody BookingStatusUpdateDTO statusUpdateDTO) {
+         return ResponseEntity.ok(bookingService.updateStatus(id, statusUpdateDTO));
+     }
+diff --git a/src/main/java/org/example/uberreviewservice/controller/DriverController.java b/src/main/java/org/example/uberreviewservice/controller/DriverController.java
+index c45f2d15674e0a43510e92f039fbd2328f4a0b05..7390eddb29f90b27eb405d8e41859d7d961d0094 100644
+--- a/src/main/java/org/example/uberreviewservice/controller/DriverController.java
++++ b/src/main/java/org/example/uberreviewservice/controller/DriverController.java
+@@ -1,5 +1,15 @@
+ package org.example.uberreviewservice.controller;
+ 
++import io.swagger.v3.oas.annotations.Operation;
++import io.swagger.v3.oas.annotations.Parameter;
++import io.swagger.v3.oas.annotations.media.ArraySchema;
++import io.swagger.v3.oas.annotations.media.Content;
++import io.swagger.v3.oas.annotations.media.ExampleObject;
++import io.swagger.v3.oas.annotations.media.Schema;
++import io.swagger.v3.oas.annotations.responses.ApiResponse;
++import io.swagger.v3.oas.annotations.responses.ApiResponses;
++import io.swagger.v3.oas.annotations.tags.Tag;
++
+ import lombok.RequiredArgsConstructor;
+ import org.example.uberreviewservice.dto.driver.DriverRequestDTO;
+ import org.example.uberreviewservice.dto.driver.DriverResponseDTO;
+@@ -17,6 +27,7 @@
+ 
+ import java.util.List;
+ 
++@Tag(name = "Review workflow - drivers")
+ @RestController
+ @RequestMapping("/api/v1/drivers")
+ @RequiredArgsConstructor
+@@ -24,6 +35,20 @@
+ 
+     private final DriverService driverService; // depends on the interface, not DriverServiceImpl
+ 
++    @Operation(operationId = "ReviewService_createDriver", summary = "Create a driver for the review workflow",
++            description = "Creates a driver record used by ReviewService bookings. This is independent of AuthService login. DriverController.createDriver -> DriverServiceImpl.createDriver -> validateDriverRequest -> DriverMapper.toEntity -> DriverRepository.save -> DriverMapper.toResponseDTO. The service checks existsByLicenceNumber and returns 409 on a duplicate. The checked-in source depends on historical 0.0.2-SNAPSHOT. With current shared models this DTO omits mandatory account/role fields; simply upgrading the dependency will not preserve this workflow.")
++    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
++            description = "JSON body is required by Spring MVC. Field descriptions distinguish service requirements from active validation.",
++            content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.driver.DriverRequestDTO.class),
++                    examples = @ExampleObject(value = "{\n  \"driverName\": \"Ravi Kumar\",\n  \"licenceNumber\": \"TS0920260012345\"\n}")))
++    @ApiResponses({
++            @ApiResponse(responseCode = "201", description = "Create a driver for the review workflow completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.driver.DriverResponseDTO.class), examples = @ExampleObject(value = "{\"id\":201,\"driverName\":\"Ravi Kumar\",\"licenceNumber\":\"TS0920260012345\"}"))),
++            @ApiResponse(responseCode = "409", description = "DuplicateLicenceNumberException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Blank/missing service-validated field, persistence error, or catch-all failure; ErrorResponseDTO.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @PostMapping
+     public ResponseEntity<DriverResponseDTO> createDriver(
+             @RequestBody DriverRequestDTO requestDTO) {
+@@ -31,28 +56,74 @@
+         return new ResponseEntity<>(response, HttpStatus.CREATED);
+     }
+ 
++    @Operation(operationId = "ReviewService_getDriver", summary = "Read one driver",
++            description = "Confirms the created driver can be found by the returned database ID. DriverController.getDriver -> DriverServiceImpl.getDriver -> DriverRepository.findById -> DriverMapper.toResponseDTO; missing row throws DriverNotFoundException. ")
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "Read one driver completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.driver.DriverResponseDTO.class), examples = @ExampleObject(value = "{\"id\":201,\"driverName\":\"Ravi Kumar\",\"licenceNumber\":\"TS0920260012345\"}"))),
++            @ApiResponse(responseCode = "404", description = "DriverNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Catch-all error, including nonnumeric path binding in this advice.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @GetMapping("/{id}")
+-    public ResponseEntity<DriverResponseDTO> getDriver(@PathVariable Long id) {
++    public ResponseEntity<DriverResponseDTO> getDriver(@Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id) {
+         DriverResponseDTO response = driverService.getDriver(id);
+         return ResponseEntity.ok(response);
+     }
+ 
++    @Operation(operationId = "ReviewService_getAllDrivers", summary = "List all drivers",
++            description = "Checks the collection view and confirms the created driver is included. DriverController.getAllDrivers -> DriverServiceImpl.getAllDrivers -> DriverRepository.findAll -> DriverMapper.toResponseDTO for every row. No pagination, filtering, sorting, or query parameters are declared.")
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "List all drivers completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", array = @ArraySchema(schema = @Schema(implementation = org.example.uberreviewservice.dto.driver.DriverResponseDTO.class)), examples = @ExampleObject(value = "[{\"id\":201,\"driverName\":\"Ravi Kumar\",\"licenceNumber\":\"TS0920260012345\"}]"))),
++            @ApiResponse(responseCode = "500", description = "Repository, mapping or other catch-all error.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @GetMapping
+     public ResponseEntity<List<DriverResponseDTO>> getAllDrivers() {
+         List<DriverResponseDTO> response = driverService.getAllDrivers();
+         return ResponseEntity.ok(response);
+     }
+ 
++    @Operation(operationId = "ReviewService_updateDriver", summary = "Update a driver",
++            description = "Exercises the update path while keeping identifiers stable. DriverController.updateDriver -> DriverServiceImpl.updateDriver: validate request, DriverRepository.findById, set driverName and licenceNumber, DriverRepository.save, DriverMapper.toResponseDTO. The service checks existsByLicenceNumber and returns 409 on a duplicate. Send every field of this request DTO; omitted fields are validated as null. This is not a partial update.")
++    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
++            description = "JSON body is required by Spring MVC. Field descriptions distinguish service requirements from active validation.",
++            content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.driver.DriverRequestDTO.class),
++                    examples = @ExampleObject(value = "{\n  \"driverName\": \"Ravi K. Kumar\",\n  \"licenceNumber\": \"TS0920260012345\"\n}")))
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "Update a driver completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.driver.DriverResponseDTO.class), examples = @ExampleObject(value = "{\"id\":201,\"driverName\":\"Ravi K. Kumar\",\"licenceNumber\":\"TS0920260012345\"}"))),
++            @ApiResponse(responseCode = "404", description = "DriverNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "409", description = "Changed licence number already belongs to another driver.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Blank/missing field or other catch-all error.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @PutMapping("/{id}")
+     public ResponseEntity<DriverResponseDTO> updateDriver(
+-            @PathVariable Long id,
++            @Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id,
+             @RequestBody DriverRequestDTO requestDTO) {
+         DriverResponseDTO response = driverService.updateDriver(id, requestDTO);
+         return ResponseEntity.ok(response);
+     }
+ 
++    @Operation(operationId = "ReviewService_deleteDriver", summary = "Delete an unreferenced driver",
++            description = "Tests deletion and the foreign-key protection rule using a separate unbooked fixture. DriverController.deleteDriver -> DriverServiceImpl.deleteDriver -> DriverRepository.findById -> BookingRepository.countByDriverId; if count is zero, DriverRepository.delete. Controller returns noContent(). The count includes completed and canceled bookings as well as active ones. No booking-delete API exists, so completion does not make the original fixture deletable.")
++    @ApiResponses({
++            @ApiResponse(responseCode = "204", description = "No response body.",
++                    content = @Content),
++            @ApiResponse(responseCode = "404", description = "DriverNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "409", description = "DriverHasActiveBookingsException when any booking references this row.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Other persistence or catch-all error.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @DeleteMapping("/{id}")
+-    public ResponseEntity<Void> deleteDriver(@PathVariable Long id) {
++    public ResponseEntity<Void> deleteDriver(@Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id) {
+         driverService.deleteDriver(id);
+         return ResponseEntity.noContent().build();
+     }
+diff --git a/src/main/java/org/example/uberreviewservice/controller/PassengerController.java b/src/main/java/org/example/uberreviewservice/controller/PassengerController.java
+index 08cc4e0293a9c30f45d9c9766bd160d198c73acc..a6438f5bff2ceb12b6f6e9577562ecda5882c3ea 100644
+--- a/src/main/java/org/example/uberreviewservice/controller/PassengerController.java
++++ b/src/main/java/org/example/uberreviewservice/controller/PassengerController.java
+@@ -1,5 +1,15 @@
+ package org.example.uberreviewservice.controller;
+ 
++import io.swagger.v3.oas.annotations.Operation;
++import io.swagger.v3.oas.annotations.Parameter;
++import io.swagger.v3.oas.annotations.media.ArraySchema;
++import io.swagger.v3.oas.annotations.media.Content;
++import io.swagger.v3.oas.annotations.media.ExampleObject;
++import io.swagger.v3.oas.annotations.media.Schema;
++import io.swagger.v3.oas.annotations.responses.ApiResponse;
++import io.swagger.v3.oas.annotations.responses.ApiResponses;
++import io.swagger.v3.oas.annotations.tags.Tag;
++
+ import lombok.AllArgsConstructor;
+ import org.example.uberreviewservice.dto.passenger.*;
+ import org.example.uberreviewservice.service.PassengerService;
+@@ -9,6 +19,7 @@
+ 
+ import java.util.List;
+ 
++@Tag(name = "Review workflow - passengers")
+ @RestController
+ @RequestMapping("/api/v1/passengers")
+ @AllArgsConstructor
+@@ -16,6 +27,18 @@
+ 
+     private final PassengerService passengerService;
+ 
++    @Operation(operationId = "ReviewService_createPassenger", summary = "Create a passenger for the review workflow",
++            description = "Creates a passenger record used by ReviewService bookings. This is independent of AuthService login. PassengerController.createPassenger -> PassengerServiceImpl.createPassenger -> validatePassengerRequest -> PassengerMapper.toEntity -> PassengerRepository.save -> PassengerMapper.toResponseDTO. The checked-in source depends on historical 0.0.2-SNAPSHOT. With current shared models this DTO omits mandatory account/role fields; simply upgrading the dependency will not preserve this workflow.")
++    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
++            description = "JSON body is required by Spring MVC. Field descriptions distinguish service requirements from active validation.",
++            content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.passenger.PassengerRequestDTO.class),
++                    examples = @ExampleObject(value = "{\n  \"passengerName\": \"Anita Sharma\"\n}")))
++    @ApiResponses({
++            @ApiResponse(responseCode = "201", description = "Create a passenger for the review workflow completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.passenger.PassengerResponseDTO.class), examples = @ExampleObject(value = "{\"id\":101,\"passengerName\":\"Anita Sharma\"}"))),
++            @ApiResponse(responseCode = "500", description = "Blank/missing service-validated field, persistence error, or catch-all failure; ErrorResponseDTO.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @PostMapping
+     public ResponseEntity<PassengerResponseDTO> createPassenger(
+             @RequestBody PassengerRequestDTO requestDTO) {
+@@ -23,25 +46,69 @@
+         return new ResponseEntity<>(response, HttpStatus.CREATED);
+     }
+ 
++    @Operation(operationId = "ReviewService_getPassenger", summary = "Read one passenger",
++            description = "Confirms the created passenger can be found by the returned database ID. PassengerController.getPassenger -> PassengerServiceImpl.getPassenger -> PassengerRepository.findById -> PassengerMapper.toResponseDTO; missing row throws PassengerNotFoundException. ")
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "Read one passenger completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.passenger.PassengerResponseDTO.class), examples = @ExampleObject(value = "{\"id\":101,\"passengerName\":\"Anita Sharma\"}"))),
++            @ApiResponse(responseCode = "404", description = "PassengerNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Catch-all error, including nonnumeric path binding in this advice.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @GetMapping("/{id}")
+-    public ResponseEntity<PassengerResponseDTO> getPassenger(@PathVariable Long id) {
++    public ResponseEntity<PassengerResponseDTO> getPassenger(@Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id) {
+         return ResponseEntity.ok(passengerService.getPassenger(id));
+     }
+ 
++    @Operation(operationId = "ReviewService_getAllPassengers", summary = "List all passengers",
++            description = "Checks the collection view and confirms the created passenger is included. PassengerController.getAllPassengers -> PassengerServiceImpl.getAllPassengers -> PassengerRepository.findAll -> PassengerMapper.toResponseDTO for every row. No pagination, filtering, sorting, or query parameters are declared.")
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "List all passengers completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", array = @ArraySchema(schema = @Schema(implementation = org.example.uberreviewservice.dto.passenger.PassengerResponseDTO.class)), examples = @ExampleObject(value = "[{\"id\":101,\"passengerName\":\"Anita Sharma\"}]"))),
++            @ApiResponse(responseCode = "500", description = "Repository, mapping or other catch-all error.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @GetMapping
+     public ResponseEntity<List<PassengerResponseDTO>> getAllPassengers() {
+         return ResponseEntity.ok(passengerService.getAllPassengers());
+     }
+ 
++    @Operation(operationId = "ReviewService_updatePassenger", summary = "Update a passenger",
++            description = "Exercises the update path while keeping identifiers stable. PassengerController.updatePassenger -> PassengerServiceImpl.updatePassenger: validate request, PassengerRepository.findById, set passengerName, PassengerRepository.save, PassengerMapper.toResponseDTO. Send every field of this request DTO; omitted fields are validated as null. This is not a partial update.")
++    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
++            description = "JSON body is required by Spring MVC. Field descriptions distinguish service requirements from active validation.",
++            content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.passenger.PassengerRequestDTO.class),
++                    examples = @ExampleObject(value = "{\n  \"passengerName\": \"Anita S. Sharma\"\n}")))
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "Update a passenger completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.passenger.PassengerResponseDTO.class), examples = @ExampleObject(value = "{\"id\":101,\"passengerName\":\"Anita S. Sharma\"}"))),
++            @ApiResponse(responseCode = "404", description = "PassengerNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Blank/missing field or other catch-all error.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @PutMapping("/{id}")
+     public ResponseEntity<PassengerResponseDTO> updatePassenger(
+-            @PathVariable Long id,
++            @Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id,
+             @RequestBody PassengerRequestDTO requestDTO) {
+         return ResponseEntity.ok(passengerService.updatePassenger(id, requestDTO));
+     }
+ 
++    @Operation(operationId = "ReviewService_deletePassenger", summary = "Delete an unreferenced passenger",
++            description = "Tests deletion and the foreign-key protection rule using a separate unbooked fixture. PassengerController.deletePassenger -> PassengerServiceImpl.deletePassenger -> PassengerRepository.findById -> BookingRepository.countByPassengerId; if count is zero, PassengerRepository.delete. Controller returns noContent(). The count includes completed and canceled bookings as well as active ones. No booking-delete API exists, so completion does not make the original fixture deletable.")
++    @ApiResponses({
++            @ApiResponse(responseCode = "204", description = "No response body.",
++                    content = @Content),
++            @ApiResponse(responseCode = "404", description = "PassengerNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "409", description = "PassengerHasActiveBookingsException when any booking references this row.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Other persistence or catch-all error.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @DeleteMapping("/{id}")
+-    public ResponseEntity<Void> deletePassenger(@PathVariable Long id) {
++    public ResponseEntity<Void> deletePassenger(@Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id) {
+         passengerService.deletePassenger(id);
+         return ResponseEntity.noContent().build();
+     }
+diff --git a/src/main/java/org/example/uberreviewservice/controller/ReviewController.java b/src/main/java/org/example/uberreviewservice/controller/ReviewController.java
+index 499d0a08d85cae8800f6b8b73809267fc29dd1ea..11f738e2d1112c5b956d4c59f5833c796d011d5c 100644
+--- a/src/main/java/org/example/uberreviewservice/controller/ReviewController.java
++++ b/src/main/java/org/example/uberreviewservice/controller/ReviewController.java
+@@ -1,5 +1,14 @@
+ package org.example.uberreviewservice.controller;
+ 
++import io.swagger.v3.oas.annotations.Operation;
++import io.swagger.v3.oas.annotations.Parameter;
++import io.swagger.v3.oas.annotations.media.Content;
++import io.swagger.v3.oas.annotations.media.ExampleObject;
++import io.swagger.v3.oas.annotations.media.Schema;
++import io.swagger.v3.oas.annotations.responses.ApiResponse;
++import io.swagger.v3.oas.annotations.responses.ApiResponses;
++import io.swagger.v3.oas.annotations.tags.Tag;
++
+ import lombok.RequiredArgsConstructor;
+ import org.example.uberreviewservice.dto.review.PassengerReviewRequestDTO;
+ import org.example.uberreviewservice.dto.review.PassengerReviewResponseDTO;
+@@ -13,6 +22,7 @@
+ import org.springframework.web.bind.annotation.RequestMapping;
+ import org.springframework.web.bind.annotation.RestController;
+ 
++@Tag(name = "Passenger reviews")
+ @RestController
+ @RequestMapping("/api/v1/reviews")
+ @RequiredArgsConstructor
+@@ -20,6 +30,22 @@
+ 
+     private final ReviewService reviewService; // depends on the interface, not ReviewServiceImpl
+ 
++    @Operation(operationId = "ReviewService_createReview", summary = "Create a passenger review",
++            description = "Creates the one permitted review for a completed ride and demonstrates JOINED inheritance persistence. ReviewController.createReview -> ReviewServiceImpl.createReview -> BookingRepository.findById -> COMPLETED check -> ReviewRepository.findByBookingId duplicate check -> validateReviewRequest -> ReviewMapper.toEntity -> PassengerReviewRepository.save -> ReviewMapper.toResponseDTO. Request fields description/rating do not exist in this DTO. Passenger-specific values are persisted; base description/rating are not set by ReviewMapper. Caller identity is not verified.")
++    @io.swagger.v3.oas.annotations.parameters.RequestBody(required = true,
++            description = "JSON body is required by Spring MVC. Field descriptions distinguish service requirements from active validation.",
++            content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.review.PassengerReviewRequestDTO.class),
++                    examples = @ExampleObject(value = "{\n  \"bookingId\": 301,\n  \"passengerRating\": 4.5,\n  \"passengerReviewContent\": \"Passenger was ready at pickup and communicated clearly.\"\n}")))
++    @ApiResponses({
++            @ApiResponse(responseCode = "201", description = "Create a passenger review completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.review.PassengerReviewResponseDTO.class), examples = @ExampleObject(value = "{\"id\":501,\"passengerRating\":4.5,\"passengerReviewContent\":\"Passenger was ready at pickup and communicated clearly.\",\"bookingId\":301,\"passengerId\":101,\"passengerName\":\"Anita S. Sharma\"}"))),
++            @ApiResponse(responseCode = "404", description = "BookingNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "409", description = "InvalidBookingStateForReviewException or ReviewAlreadyExistsException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Null bookingId, blank content, rating outside 0..5, persistence or catch-all failure.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @PostMapping
+     public ResponseEntity<PassengerReviewResponseDTO> createReview(
+             @RequestBody PassengerReviewRequestDTO requestDTO) {
+@@ -27,15 +53,35 @@
+         return new ResponseEntity<>(response, HttpStatus.CREATED);
+     }
+ 
++    @Operation(operationId = "ReviewService_getReview", summary = "Read a passenger review by review ID",
++            description = "Confirms the generated review ID can retrieve the saved passenger-specific values. ReviewController.getReview -> ReviewServiceImpl.getReview -> PassengerReviewRepository.findById -> ReviewMapper.toResponseDTO, which follows review.booking.passenger. ")
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "Read a passenger review by review ID completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.review.PassengerReviewResponseDTO.class), examples = @ExampleObject(value = "{\"id\":501,\"passengerRating\":4.5,\"passengerReviewContent\":\"Passenger was ready at pickup and communicated clearly.\",\"bookingId\":301,\"passengerId\":101,\"passengerName\":\"Anita S. Sharma\"}"))),
++            @ApiResponse(responseCode = "404", description = "ReviewNotFoundException.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Repository/mapping or catch-all error.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @GetMapping("/{id}")
+-    public ResponseEntity<PassengerReviewResponseDTO> getReview(@PathVariable Long id) {
++    public ResponseEntity<PassengerReviewResponseDTO> getReview(@Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id) {
+         PassengerReviewResponseDTO response = reviewService.getReview(id);
+         return ResponseEntity.ok(response);
+     }
+ 
++    @Operation(operationId = "ReviewService_getReviewByBooking", summary = "Read a passenger review by booking ID",
++            description = "Retrieves the same review when the client knows the booking ID rather than the review ID. ReviewController.getReviewByBooking -> ReviewServiceImpl.getReviewByBookingId -> PassengerReviewRepository.findByBookingId -> ReviewMapper.toResponseDTO. The exception message says Review not found with id even though this route passes a booking ID to that exception constructor.")
++    @ApiResponses({
++            @ApiResponse(responseCode = "200", description = "Read a passenger review by booking ID completed on the controller success branch.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.review.PassengerReviewResponseDTO.class), examples = @ExampleObject(value = "{\"id\":501,\"passengerRating\":4.5,\"passengerReviewContent\":\"Passenger was ready at pickup and communicated clearly.\",\"bookingId\":301,\"passengerId\":101,\"passengerName\":\"Anita S. Sharma\"}"))),
++            @ApiResponse(responseCode = "404", description = "ReviewNotFoundException if no passenger review exists for that booking ID; no separate booking existence lookup.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class))),
++            @ApiResponse(responseCode = "500", description = "Repository/mapping or catch-all error.",
++                    content = @Content(mediaType = "application/json", schema = @Schema(implementation = org.example.uberreviewservice.dto.error.ErrorResponseDTO.class)))
++    })
+     @GetMapping("/booking/{bookingId}")
+     public ResponseEntity<PassengerReviewResponseDTO> getReviewByBooking(
+-            @PathVariable Long bookingId) {
++            @Parameter(description = "Database booking ID, not a review ID.", required = true, example = "1") @PathVariable Long bookingId) {
+         PassengerReviewResponseDTO response = reviewService.getReviewByBookingId(bookingId);
+         return ResponseEntity.ok(response);
+     }
+diff --git a/src/main/java/org/example/uberreviewservice/dto/booking/BookingRequestDTO.java b/src/main/java/org/example/uberreviewservice/dto/booking/BookingRequestDTO.java
+index 078b42d79c3d88a754c79ef50183bf2c88a409e3..95662325c3db1c00c166c9dedf0108bac5e58b04 100644
+--- a/src/main/java/org/example/uberreviewservice/dto/booking/BookingRequestDTO.java
++++ b/src/main/java/org/example/uberreviewservice/dto/booking/BookingRequestDTO.java
+@@ -1,5 +1,7 @@
+ package org.example.uberreviewservice.dto.booking;
+ 
++import io.swagger.v3.oas.annotations.media.Schema;
++
+ import lombok.*;
+ 
+ @Getter
+@@ -8,5 +10,6 @@
+ @AllArgsConstructor
+ @Builder
+ public class BookingRequestDTO {
++    @Schema(description = "Existing passenger ID. Null reaches findById and becomes 500. Unknown non-null ID becomes 404. Driver is chosen by the service.", requiredMode = Schema.RequiredMode.REQUIRED, example = "101")
+     private Long passengerId; // only field client sends; driver, status, timings are system-derived
+ }
+\ No newline at end of file
+diff --git a/src/main/java/org/example/uberreviewservice/dto/booking/BookingStatusUpdateDTO.java b/src/main/java/org/example/uberreviewservice/dto/booking/BookingStatusUpdateDTO.java
+index 05a9de5f061bffcd1adf0a17e0f90b2bed8cb0b5..7a691337850bed1197e7596b793b486b64ac6aed 100644
+--- a/src/main/java/org/example/uberreviewservice/dto/booking/BookingStatusUpdateDTO.java
++++ b/src/main/java/org/example/uberreviewservice/dto/booking/BookingStatusUpdateDTO.java
+@@ -1,5 +1,7 @@
+ package org.example.uberreviewservice.dto.booking;
+ 
++import io.swagger.v3.oas.annotations.media.Schema;
++
+ import com.rideflow.rideflowentityservice.models.BookingStatus;
+ import jakarta.validation.constraints.NotNull;
+ import lombok.*;
+@@ -12,5 +14,6 @@
+ @Builder
+ public class BookingStatusUpdateDTO {
+     @NotNull(message = "newStatus is required")
++    @Schema(description = "The only ReviewService request field with active @Valid plus @NotNull; missing/null yields 400. Transition rules are checked separately (409).", requiredMode = Schema.RequiredMode.REQUIRED, example = "CAB_ARRIVED")
+     private BookingStatus newStatus;
+ }
+diff --git a/src/main/java/org/example/uberreviewservice/dto/driver/DriverRequestDTO.java b/src/main/java/org/example/uberreviewservice/dto/driver/DriverRequestDTO.java
+index e84d78712b6dbb3a5d8b24e3304575509702ed94..34ce3cd00e1d7a11815990e1a5644884ac8f875b 100644
+--- a/src/main/java/org/example/uberreviewservice/dto/driver/DriverRequestDTO.java
++++ b/src/main/java/org/example/uberreviewservice/dto/driver/DriverRequestDTO.java
+@@ -1,5 +1,7 @@
+ package org.example.uberreviewservice.dto.driver;
+ 
++import io.swagger.v3.oas.annotations.media.Schema;
++
+ import lombok.*;
+ 
+ // Used when registering/creating a driver
+@@ -9,6 +11,8 @@
+ @AllArgsConstructor
+ @Builder
+ public class DriverRequestDTO {
++    @Schema(description = "Service rejects null or blank; currently mapped to 500.", requiredMode = Schema.RequiredMode.REQUIRED, example = "Ravi Kumar")
+     private String driverName;
++    @Schema(description = "Keep this exact API spelling. Service rejects null/blank (500) and checks duplicates (409). Latest shared entity instead spells its property licenseNumber; see compatibility issue.", requiredMode = Schema.RequiredMode.REQUIRED, example = "TS0920260012345")
+     private String licenceNumber;
+ }
+\ No newline at end of file
+diff --git a/src/main/java/org/example/uberreviewservice/dto/passenger/PassengerRequestDTO.java b/src/main/java/org/example/uberreviewservice/dto/passenger/PassengerRequestDTO.java
+index d900e7147622b9520f50753e091574df57d0f8a6..13a4ea725d69fcb2831579667b8040362932e9cb 100644
+--- a/src/main/java/org/example/uberreviewservice/dto/passenger/PassengerRequestDTO.java
++++ b/src/main/java/org/example/uberreviewservice/dto/passenger/PassengerRequestDTO.java
+@@ -1,5 +1,7 @@
+ package org.example.uberreviewservice.dto.passenger;
+ 
++import io.swagger.v3.oas.annotations.media.Schema;
++
+ import lombok.*;
+ 
+ // Used when registering a new passenger
+@@ -9,5 +11,6 @@
+ @AllArgsConstructor
+ @Builder
+ public class PassengerRequestDTO {
++    @Schema(description = "Service rejects null or blank with IllegalArgumentException; the generic advice maps this to 500, not 400.", requiredMode = Schema.RequiredMode.REQUIRED, example = "Anita Sharma")
+     private String passengerName;
+ }
+\ No newline at end of file
+diff --git a/src/main/java/org/example/uberreviewservice/dto/review/PassengerReviewRequestDTO.java b/src/main/java/org/example/uberreviewservice/dto/review/PassengerReviewRequestDTO.java
+index 62299f21667eae7ee27b52f983fadfea164ae05d..9465e0f1db372d98bc539aa52c9c8b3906ac212d 100644
+--- a/src/main/java/org/example/uberreviewservice/dto/review/PassengerReviewRequestDTO.java
++++ b/src/main/java/org/example/uberreviewservice/dto/review/PassengerReviewRequestDTO.java
+@@ -1,5 +1,7 @@
+ package org.example.uberreviewservice.dto.review;
+ 
++import io.swagger.v3.oas.annotations.media.Schema;
++
+ import lombok.*;
+ 
+ // Sent by driver after ride completion, to rate the passenger
+@@ -9,7 +11,10 @@
+ @AllArgsConstructor
+ @Builder
+ public class PassengerReviewRequestDTO {
++    @Schema(description = "Existing COMPLETED booking without a review. These checks precede content and rating validation.", requiredMode = Schema.RequiredMode.REQUIRED, example = "301")
+     private Long bookingId;              // which ride this review is for
++    @Schema(description = "Range 0 through 5 inclusive checked in service; out-of-range becomes 500. Primitive double defaults to 0 when omitted.", requiredMode = Schema.RequiredMode.NOT_REQUIRED, example = "4.5", minimum = "0", maximum = "5", defaultValue = "0")
+     private double passengerRating;
++    @Schema(description = "Review of the passenger, written by a driver conceptually; caller identity is not enforced. Null/blank becomes 500 after booking checks.", requiredMode = Schema.RequiredMode.REQUIRED, example = "Passenger was ready at pickup and communicated clearly.")
+     private String passengerReviewContent;
+ }
+\ No newline at end of file
+diff --git a/src/main/resources/application.properties b/src/main/resources/application.properties
+index 3e428fa73314cbaeb198883bf8c7b22f351e7b19..363c4000f4d667778cc27442c8dbd13e8f2e9b6b 100644
+--- a/src/main/resources/application.properties
++++ b/src/main/resources/application.properties
+@@ -9,3 +9,7 @@
+ spring.jpa.properties.hibernate.format_sql=true
+ spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect
+ server.port=8081
++
++# Swagger / OpenAPI documentation
++springdoc.paths-to-match=/api/v1/**
++springdoc.override-with-generic-response=false
