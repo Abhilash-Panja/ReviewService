@@ -25,7 +25,7 @@ public class DriverServiceImpl implements DriverService {
     public DriverResponseDTO createDriver(DriverRequestDTO requestDTO) {
         validateDriverRequest(requestDTO);
 
-        if (driverRepository.existsByLicenceNumber(requestDTO.getLicenceNumber())) {
+        if (driverRepository.existsByLicenseNumber(requestDTO.getLicenceNumber())) {
             throw new DuplicateLicenceNumberException(requestDTO.getLicenceNumber());
         }
 
@@ -58,13 +58,13 @@ public class DriverServiceImpl implements DriverService {
         // Only check for duplicates if the licence number is actually changing —
         // otherwise updating just the name would falsely trip the check against
         // the driver's own existing licence number
-        if (!driver.getLicenceNumber().equals(requestDTO.getLicenceNumber())
-                && driverRepository.existsByLicenceNumber(requestDTO.getLicenceNumber())) {
+        if (!driver.getLicenseNumber().equals(requestDTO.getLicenceNumber())
+                && driverRepository.existsByLicenseNumber(requestDTO.getLicenceNumber())) {
             throw new DuplicateLicenceNumberException(requestDTO.getLicenceNumber());
         }
 
         driver.setDriverName(requestDTO.getDriverName());
-        driver.setLicenceNumber(requestDTO.getLicenceNumber());
+        driver.setLicenseNumber(requestDTO.getLicenceNumber());
 
         Driver updated = driverRepository.save(driver);
         return DriverMapper.toResponseDTO(updated);

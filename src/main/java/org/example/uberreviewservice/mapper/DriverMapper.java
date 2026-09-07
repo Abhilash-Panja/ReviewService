@@ -19,7 +19,7 @@ public class DriverMapper {
         return DriverResponseDTO.builder()
                 .id(driver.getId())
                 .driverName(driver.getDriverName())
-                .licenceNumber(driver.getLicenceNumber())
+                .licenceNumber(driver.getLicenseNumber())
                 .build();
     }
 
@@ -30,7 +30,7 @@ public class DriverMapper {
         if (dto == null) return null;
         return Driver.builder()
                 .driverName(dto.getDriverName())
-                .licenceNumber(dto.getLicenceNumber())
+                .licenseNumber(dto.getLicenceNumber())
                 .build();
     }
 }
