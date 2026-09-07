@@ -43,7 +43,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponseDTO> handleGeneric(
             Exception ex, WebRequest request) {
-        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Something went wrong", request);
+
+        ex.printStackTrace(); // Temporary diagnostic output
+
+        return buildResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR,
+                "Something went wrong",
+                request
+        );
     }
 
     private ResponseEntity<ErrorResponseDTO> buildResponse(

@@ -1,5 +1,4 @@
 package org.example.uberreviewservice.mapper;
-
 import com.rideflow.rideflowentityservice.models.Booking;
 import com.rideflow.rideflowentityservice.models.PassengerReview;
 import com.rideflow.rideflowentityservice.models.Review;
@@ -7,11 +6,19 @@ import org.example.uberreviewservice.dto.review.PassengerReviewRequestDTO;
 import org.example.uberreviewservice.dto.review.PassengerReviewResponseDTO;
 import org.example.uberreviewservice.dto.review.ReviewSummaryDTO;
 
-
 public class ReviewMapper {
 
     public static ReviewSummaryDTO toSummaryDTO(Review review) {
         if (review == null) return null;
+
+        if (review instanceof PassengerReview passengerReview) {
+            return ReviewSummaryDTO.builder()
+                    .id(passengerReview.getId())
+                    .rating(passengerReview.getPassengerRating())
+                    .description(passengerReview.getPassengerReviewContent())
+                    .build();
+        }
+
         return ReviewSummaryDTO.builder()
                 .id(review.getId())
                 .rating(review.getRating())
