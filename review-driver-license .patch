@@ -1,0 +1,64 @@
+diff --git a/src/main/java/org/example/uberreviewservice/mapper/DriverMapper.java b/src/main/java/org/example/uberreviewservice/mapper/DriverMapper.java
+index 8a46f09..9f55cbc 100644
+--- a/src/main/java/org/example/uberreviewservice/mapper/DriverMapper.java
++++ b/src/main/java/org/example/uberreviewservice/mapper/DriverMapper.java
+@@ -19,7 +19,7 @@ public class DriverMapper {
+         return DriverResponseDTO.builder()
+                 .id(driver.getId())
+                 .driverName(driver.getDriverName())
+-                .licenceNumber(driver.getLicenceNumber())
++                .licenceNumber(driver.getLicenseNumber())
+                 .build();
+     }
+ 
+@@ -30,7 +30,7 @@ public class DriverMapper {
+         if (dto == null) return null;
+         return Driver.builder()
+                 .driverName(dto.getDriverName())
+-                .licenceNumber(dto.getLicenceNumber())
++                .licenseNumber(dto.getLicenceNumber())
+                 .build();
+     }
+ }
+\ No newline at end of file
+diff --git a/src/main/java/org/example/uberreviewservice/repository/DriverRepository.java b/src/main/java/org/example/uberreviewservice/repository/DriverRepository.java
+index aa9bb7a..b5d1491 100644
+--- a/src/main/java/org/example/uberreviewservice/repository/DriverRepository.java
++++ b/src/main/java/org/example/uberreviewservice/repository/DriverRepository.java
+@@ -5,5 +5,5 @@ import com.rideflow.rideflowentityservice.models.Driver;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ public interface DriverRepository extends JpaRepository<Driver,Long> {
+-    boolean existsByLicenceNumber(String licenceNumber);
++    boolean existsByLicenseNumber(String licenseNumber);
+ }
+diff --git a/src/main/java/org/example/uberreviewservice/service/DriverServiceImpl.java b/src/main/java/org/example/uberreviewservice/service/DriverServiceImpl.java
+index 1479f51..26db63f 100644
+--- a/src/main/java/org/example/uberreviewservice/service/DriverServiceImpl.java
++++ b/src/main/java/org/example/uberreviewservice/service/DriverServiceImpl.java
+@@ -25,7 +25,7 @@ public class DriverServiceImpl implements DriverService {
+     public DriverResponseDTO createDriver(DriverRequestDTO requestDTO) {
+         validateDriverRequest(requestDTO);
+ 
+-        if (driverRepository.existsByLicenceNumber(requestDTO.getLicenceNumber())) {
++        if (driverRepository.existsByLicenseNumber(requestDTO.getLicenceNumber())) {
+             throw new DuplicateLicenceNumberException(requestDTO.getLicenceNumber());
+         }
+ 
+@@ -58,13 +58,13 @@ public class DriverServiceImpl implements DriverService {
+         // Only check for duplicates if the licence number is actually changing —
+         // otherwise updating just the name would falsely trip the check against
+         // the driver's own existing licence number
+-        if (!driver.getLicenceNumber().equals(requestDTO.getLicenceNumber())
+-                && driverRepository.existsByLicenceNumber(requestDTO.getLicenceNumber())) {
++        if (!driver.getLicenseNumber().equals(requestDTO.getLicenceNumber())
++                && driverRepository.existsByLicenseNumber(requestDTO.getLicenceNumber())) {
+             throw new DuplicateLicenceNumberException(requestDTO.getLicenceNumber());
+         }
+ 
+         driver.setDriverName(requestDTO.getDriverName());
+-        driver.setLicenceNumber(requestDTO.getLicenceNumber());
++        driver.setLicenseNumber(requestDTO.getLicenceNumber());
+ 
+         Driver updated = driverRepository.save(driver);
+         return DriverMapper.toResponseDTO(updated);
