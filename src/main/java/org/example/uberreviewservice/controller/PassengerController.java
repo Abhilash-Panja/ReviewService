@@ -16,6 +16,7 @@ import org.example.uberreviewservice.service.PassengerService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -41,7 +42,7 @@ public class PassengerController {
     })
     @PostMapping
     public ResponseEntity<PassengerResponseDTO> createPassenger(
-            @RequestBody PassengerRequestDTO requestDTO) {
+            @Valid @RequestBody PassengerRequestDTO requestDTO) {
         PassengerResponseDTO response = passengerService.createPassenger(requestDTO);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
