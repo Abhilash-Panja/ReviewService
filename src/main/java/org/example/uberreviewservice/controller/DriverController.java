@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -51,7 +52,7 @@ public class DriverController {
     })
     @PostMapping
     public ResponseEntity<DriverResponseDTO> createDriver(
-            @RequestBody DriverRequestDTO requestDTO) {
+            @Valid @RequestBody DriverRequestDTO requestDTO) {
         DriverResponseDTO response = driverService.createDriver(requestDTO);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
