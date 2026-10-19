@@ -106,7 +106,7 @@ public class DriverController {
     @PutMapping("/{id}")
     public ResponseEntity<DriverResponseDTO> updateDriver(
             @Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id,
-            @RequestBody DriverRequestDTO requestDTO) {
+            @Valid @RequestBody DriverRequestDTO requestDTO) {
         DriverResponseDTO response = driverService.updateDriver(id, requestDTO);
         return ResponseEntity.ok(response);
     }
