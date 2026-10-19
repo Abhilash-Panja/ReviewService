@@ -92,7 +92,7 @@ public class PassengerController {
     @PutMapping("/{id}")
     public ResponseEntity<PassengerResponseDTO> updatePassenger(
             @Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id,
-            @RequestBody PassengerRequestDTO requestDTO) {
+            @Valid @RequestBody PassengerRequestDTO requestDTO) {
         return ResponseEntity.ok(passengerService.updatePassenger(id, requestDTO));
     }
 
