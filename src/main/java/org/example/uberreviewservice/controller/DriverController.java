@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -51,7 +52,7 @@ public class DriverController {
     })
     @PostMapping
     public ResponseEntity<DriverResponseDTO> createDriver(
-            @RequestBody DriverRequestDTO requestDTO) {
+            @Valid @RequestBody DriverRequestDTO requestDTO) {
         DriverResponseDTO response = driverService.createDriver(requestDTO);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
@@ -105,7 +106,7 @@ public class DriverController {
     @PutMapping("/{id}")
     public ResponseEntity<DriverResponseDTO> updateDriver(
             @Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id,
-            @RequestBody DriverRequestDTO requestDTO) {
+            @Valid @RequestBody DriverRequestDTO requestDTO) {
         DriverResponseDTO response = driverService.updateDriver(id, requestDTO);
         return ResponseEntity.ok(response);
     }

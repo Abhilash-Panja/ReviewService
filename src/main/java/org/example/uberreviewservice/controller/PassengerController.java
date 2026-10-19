@@ -16,6 +16,7 @@ import org.example.uberreviewservice.service.PassengerService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import jakarta.validation.Valid;
 
 import java.util.List;
 
@@ -41,7 +42,7 @@ public class PassengerController {
     })
     @PostMapping
     public ResponseEntity<PassengerResponseDTO> createPassenger(
-            @RequestBody PassengerRequestDTO requestDTO) {
+            @Valid @RequestBody PassengerRequestDTO requestDTO) {
         PassengerResponseDTO response = passengerService.createPassenger(requestDTO);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
@@ -91,7 +92,7 @@ public class PassengerController {
     @PutMapping("/{id}")
     public ResponseEntity<PassengerResponseDTO> updatePassenger(
             @Parameter(description = "Database ID of the resource selected by this path; not a list index.", required = true, example = "1") @PathVariable Long id,
-            @RequestBody PassengerRequestDTO requestDTO) {
+            @Valid @RequestBody PassengerRequestDTO requestDTO) {
         return ResponseEntity.ok(passengerService.updatePassenger(id, requestDTO));
     }
 

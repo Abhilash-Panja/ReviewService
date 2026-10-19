@@ -40,11 +40,17 @@ public class GlobalExceptionHandler {
     }
 
     // Catch-all safety net — never let a raw 500 with a stack trace leak to the client
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponseDTO> handleBadRequest(
+            IllegalArgumentException ex, WebRequest request) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponseDTO> handleGeneric(
             Exception ex, WebRequest request) {
 
-        ex.printStackTrace(); // Temporary diagnostic output
+        // Keep internal details in server logs; return a stable public message.
 
         return buildResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR,
